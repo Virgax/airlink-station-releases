@@ -1,0 +1,29 @@
+CARPETA DE SECRETOS DE AIRLINK STATION — para el USB
+=====================================================
+
+1. Copiá esta carpeta entera al USB (ej. /Volumes/USB/airlink-secrets).
+
+2. Completá:
+   - secrets.conf  → EMPLOYEE_ENDPOINT (URL del flow de login)
+   - sql.conf      → SQL_SERVER, SQL_DATABASE, SQL_PASSWORD
+   - station.conf  → STATION_ID (único por Mac) y revisá el resto
+
+3. Agregá a la carpeta (copiarlos de Airlink12, son los mismos en toda la flota):
+   - supervision_cert.der        (Airlink12: /usr/local/bin/supervision_cert.der)
+   - supervision_key.der         (Airlink12: /usr/local/bin/supervision_key.der)
+   - airlink_wifi.mobileconfig   (opcional, Airlink12: /usr/local/bin/)
+
+   En Airlink12:
+     sudo cp /usr/local/bin/supervision_cert.der /usr/local/bin/supervision_key.der /Volumes/USB/airlink-secrets/
+
+4. En cada Mac nueva (con el .pkg ya instalado y el USB conectado):
+     sudo cp /Volumes/USB/airlink-secrets/station.conf /usr/local/airlink/station.conf
+     sudo nano /usr/local/airlink/station.conf          ← cambiar STATION_ID
+     sudo /usr/local/airlink/engine/current/support/provision_secrets.sh /Volumes/USB/airlink-secrets
+     sudo /usr/local/airlink/engine/current/support/doctor.sh
+
+   provision_secrets.sh copia todo con los permisos correctos y prueba que el
+   login responde y que SQL conecta.
+
+5. Guardá el USB en un lugar seguro: tiene la llave de supervisión, la
+   contraseña de SQL y la firma del login. Nunca subir esto a GitHub ni a la red.

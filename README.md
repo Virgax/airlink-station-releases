@@ -23,6 +23,13 @@ identidad de supervisión), que **no** están en el paquete:
 sudo /usr/local/airlink/engine/current/support/provision_secrets.sh /Volumes/USB/airlink-secrets
 ```
 
+Plantilla de esa carpeta (sin secretos, para completar): [`plantilla-usb/`](plantilla-usb/).
+Bajarla al USB de una vez:
+
+```bash
+mkdir -p /Volumes/USB/airlink-secrets && cd /Volumes/USB/airlink-secrets && for f in secrets.conf sql.conf station.conf LEEME.txt; do curl -fsSLO https://raw.githubusercontent.com/Virgax/airlink-station-releases/main/plantilla-usb/$f; done
+```
+
 Las actualizaciones siguientes llegan solas: la app muestra "Nueva versión disponible →
 Actualizar".
 
