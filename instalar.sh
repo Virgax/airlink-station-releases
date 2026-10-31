@@ -57,14 +57,15 @@ fi
 hdr "0. Requisitos"
 # Command Line Tools: /usr/bin/python3 (motor, dashboard, SQL, login). Sin ellas
 # python3 es un "esqueleto" que solo abre un diálogo.
-if xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c 'import sys' >/dev/null 2>&1; then
+if xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c 'import hashlib' >/dev/null 2>&1; then
     ok "Command Line Tools"
 else
     echo "  Instalando Command Line Tools de Apple (sin diálogo, 5–15 min)…"
     FLAG=/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
     touch "$FLAG"
     CLT=$(softwareupdate -l 2>/dev/null | grep -E '\* Label: Command Line Tools' | sed 's/^.*Label: //' | tail -1)
-    if [ -n "$CLT" ] && softwareupdate -i "$CLT" >/dev/null 2>&1; then
+    if [ -n "$CLT" ] && softwareupdate -i "$CLT" >/dev/null 2>&1 \
+        && xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c 'import hashlib' >/dev/null 2>&1; then
         rm -f "$FLAG"; ok "Command Line Tools instaladas ($CLT)"
     else
         rm -f "$FLAG"
@@ -118,13 +119,23 @@ while :; do
         printf '  Frase clave del kit: ' > /dev/tty
         stty -echo < /dev/tty 2>/dev/null; read -r PASS < /dev/tty; stty echo < /dev/tty 2>/dev/null; echo > /dev/tty
     fi
-    DK=$(AIRLINK_KIT_PASS="$PASS" /usr/bin/python3 -c 'import hashlib,os,sys; print(hashlib.pbkdf2_hmac("sha256", os.environ["AIRLINK_KIT_PASS"].encode(), bytes.fromhex(sys.argv[1]), 600000, 48).hex())' "$SALT")
-    if tail -c +24 "$KF" | openssl enc -d -aes-256-cbc -K "${DK:0:64}" -iv "${DK:64:32}" 2>/dev/null | tar -xzf - -C "$W" 2>/dev/null \
-        && [ -f "$W/kit/kit.conf" ]; then
+    DK=$(AIRLINK_KIT_PASS="$PASS" /usr/bin/python3 -c 'import hashlib,os,sys; print(hashlib.pbkdf2_hmac("sha256", os.environ["AIRLINK_KIT_PASS"].encode(), bytes.fromhex(sys.argv[1]), 600000, 48).hex())' "$SALT" 2>"$W/py.err")
+    if [ "${#DK}" -ne 96 ] || [ "${#SALT}" -ne 32 ]; then
+        bad "No pude calcular la clave (no es la frase): Python de Apple no responde. $(head -1 "$W/py.err" 2>/dev/null | cut -c1-120)"
+        echo "     Corré:  xcode-select --install   (aceptá el diálogo), esperá que termine y repetí el comando."
+        exit 1
+    fi
+    if ! tail -c +24 "$KF" | openssl enc -d -aes-256-cbc -K "${DK:0:64}" -iv "${DK:64:32}" > "$W/kit.tgz" 2>"$W/ssl.err"; then
+        :   # "bad decrypt" = frase incorrecta
+    elif tar -xzf "$W/kit.tgz" -C "$W" 2>/dev/null && [ -f "$W/kit/kit.conf" ]; then
+        rm -f "$W/kit.tgz"
         break
+    else
+        bad "El kit se descifró pero está dañado (volvé a crearlo con crear_kit.sh y subilo de nuevo)"
+        exit 1
     fi
     [ "$TRY" -ge 3 ] || [ -n "${AIRLINK_KIT_PASS:-}" ] && { bad "Frase clave incorrecta"; exit 1; }
-    echo "  Frase clave incorrecta, probá de nuevo."
+    echo "  Frase clave incorrecta ($(head -1 "$W/ssl.err" | cut -c1-60)), probá de nuevo. Mayúsculas/minúsculas importan."
 done
 unset PASS DK
 KIT="$W/kit"
