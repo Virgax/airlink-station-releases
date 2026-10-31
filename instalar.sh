@@ -324,24 +324,27 @@ launchctl kickstart -k system/com.airlink.dashboard >/dev/null 2>&1
 
 # ---- 5. Pruebas ----
 hdr "4. Pruebas"
-LOGIN=$(/usr/bin/python3 - <<'PY' 2>&1
-import sys
-sys.path.insert(0, "/usr/local/bin")
-import airlink_auth as a
-try:
-    a.validate_employee("DR0000", "0000"); print("RESPONDE")
-except a.AuthError as e:
-    print("RESPONDE" if ("incorrecto" in str(e) or "inactivo" in str(e)) else "ERROR: %s" % e)
-PY
-)
-[ "$LOGIN" = "RESPONDE" ] && ok "El login de operadores responde (Power Automate)" || bad "Login: $LOGIN"
+# Login: el flow tiene que RESPONDER (cualquier código HTTP). Con un empleado
+# inventado puede contestar 200 "incorrecto" o un 4xx: las dos cosas = conecta.
+CODE=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    -d '{"employeeCode":"DR0000","lastFour":"0000"}' "$EMPLOYEE_ENDPOINT" 2>/dev/null)
+case "$CODE" in
+    2??|4??) ok "El login de operadores responde (Power Automate, HTTP $CODE)" ;;
+    000|"")  bad "Login: sin conexión a Power Automate (red/proxy/DNS)" ;;
+    *)       bad "Login: Power Automate respondió HTTP $CODE (¿flow apagado o URL vencida?)" ;;
+esac
 
+# SQL: primero si hay red hasta el servidor (firewall entre redes), después login/SP
+if ! nc -z -G 5 "$SQL_SERVER" "${SQL_PORT:-1433}" >/dev/null 2>&1; then
+    bad "SQL: esta Mac no llega a <servidor>:${SQL_PORT:-1433} (firewall/ruta). Pedir que habiliten la IP $(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)"
+else
 SQLT="$A/engine/current/support/test_sql_connection.py"
 if [ -f "$SQLT" ]; then
     if OUT=$(/usr/bin/python3 "$SQLT" "$A/sql.conf" 2>&1); then ok "SQL Server conecta y ejecuta el SP"
     else bad "SQL no conecta: $(echo "$OUT" | grep '✗' | head -1 | cut -c1-160 | sed -E -e 's/server=[^ ]*/server=<oculto>/' -e 's/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/<oculto>/g')"; fi
 else
     warn "No encontré test_sql_connection.py (SQL sin probar)"
+fi
 fi
 
 
