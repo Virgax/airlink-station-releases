@@ -22,6 +22,18 @@ Opciones: `curl … | sudo STATION_ID=AIRLINK-M4-02 UPDATE_CHANNEL=stable bash`
 
 Después, las actualizaciones llegan solas: la app muestra "Nueva versión → Actualizar".
 
+## Instalar desde un SSD portátil (con los IPSW)
+
+En una estación que ya funciona, con el SSD portátil conectado (APFS o exFAT, ~100 GB libres):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Virgax/airlink-station-releases/main/ssd/preparar_ssd.sh | bash
+```
+
+Copia los IPSW de esa estación a `IPSW/` en el SSD y deja **`Instalar Airlink.command`** en la raíz.
+En cada Mac nueva: conectá el SSD y **doble clic** en `Instalar Airlink.command`. Pide la contraseña
+de la Mac y la frase del kit, corre `instalar.sh` y copia los IPSW a la carpeta de la estación.
+
 ## Solo el instalador
 
 ```bash
