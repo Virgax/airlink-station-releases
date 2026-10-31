@@ -32,7 +32,8 @@ curl -fsSL https://raw.githubusercontent.com/Virgax/airlink-station-releases/mai
 
 Copia los IPSW de esa estación a `IPSW/` en el SSD y deja **`Instalar Airlink.command`** en la raíz.
 En cada Mac nueva: conectá el SSD y **doble clic** en `Instalar Airlink.command`. Pide la contraseña
-de la Mac y la frase del kit, corre `instalar.sh` y copia los IPSW a la carpeta de la estación.
+de la Mac y la frase del kit, corre `instalar.sh`, deja la red como la primera Mac Mini (cable por adaptador primero para
+internet, WiFi de respaldo y el SQL por WiFi con ruta fija) y copia los IPSW a la carpeta de la estación.
 
 ## Solo el instalador
 

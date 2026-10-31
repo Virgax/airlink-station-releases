@@ -5,7 +5,8 @@
 #  Va en la raíz del SSD como "Instalar Airlink.command", junto a la carpeta
 #  IPSW/ con los *_Restore.ipsw (lo arma preparar_ssd.sh). Hace:
 #    1. instalar.sh (requisitos, app, estación, kit cifrado, pruebas)
-#    2. copia los IPSW del SSD a la carpeta de IPSW de la estación
+#    2. red: cable primero, WiFi de respaldo, SQL por WiFi (ruta fija)
+#    3. copia los IPSW del SSD a la carpeta de IPSW de la estación
 #  No contiene secretos: pide la contraseña de la Mac y la frase del kit.
 # =============================================================================
 RAW="https://raw.githubusercontent.com/Virgax/airlink-station-releases/main"
@@ -62,7 +63,41 @@ rm -f "$T"
 echo
 [ $RC -eq 0 ] || warn "instalar.sh terminó con errores (ver arriba). Igual copio los IPSW."
 
-# ---------------------------------------------------------------- 2. IPSW
+# ---------------------------------------------------------------- 2. Red
+# Igual que la primera Mac Mini: cable (adaptador USB-C / Ethernet) primero para
+# internet y descargas; WiFi de respaldo; el SQL por WiFi con una ruta fija.
+echo "== Red: cable primero, WiFi de respaldo, SQL por WiFi"
+sudo /usr/bin/python3 - <<'PY'
+import re, subprocess
+run = lambda *a: subprocess.run(a, capture_output=True, text=True).stdout
+svcs = re.findall(r'^\((?:\d+|\*)\) (.+)$', run("networksetup", "-listnetworkserviceorder"), re.M)
+wired = [s for s in svcs if re.search(r'LAN|Ethernet|AX88|USB|Adapter', s, re.I)
+         and not re.search(r'iPhone|iPad|Thunderbolt|Bluetooth', s, re.I)]
+wifi = [s for s in svcs if s == "Wi-Fi"]
+order = wired + wifi + [s for s in svcs if s not in wired and s not in wifi]
+if order and subprocess.run(["networksetup", "-ordernetworkservices"] + order).returncode == 0:
+    print("  OK   Orden: " + " > ".join(order))
+else:
+    print("  AVISO No pude cambiar el orden de red")
+PY
+SQLH=$(sudo sed -n 's/^SQL_SERVER="\{0,1\}\([^",]*\).*/\1/p' "$A/sql.conf" 2>/dev/null | tail -1)
+SQLP=$(sudo sed -n 's/^SQL_PORT="\{0,1\}\([0-9]*\).*/\1/p' "$A/sql.conf" 2>/dev/null | tail -1); SQLP="${SQLP:-1433}"
+WIFIDEV=$(networksetup -listallhardwareports | awk '/Hardware Port: Wi-Fi/{getline; print $2}')
+GW=""; for _ in 1 2 3 4 5 6 7 8 9 10; do GW=$(ipconfig getoption "$WIFIDEV" router 2>/dev/null); [ -n "$GW" ] && break; sleep 2; done
+if ! echo "$SQLH" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    warn "No encontré la IP del SQL en sql.conf: sin ruta fija"
+elif [ -z "$GW" ]; then
+    warn "El WiFi no tiene conexión: el SQL va por el cable (conectá el WiFi y volvé a correr)"
+else
+    sudo networksetup -setadditionalroutes "Wi-Fi" "$SQLH" 255.255.255.255 "$GW" && sleep 2
+    if nc -z -G 5 "$SQLH" "$SQLP" >/dev/null 2>&1; then ok "SQL por WiFi ($(route -n get "$SQLH" | awk '/interface/{print $2}'))"
+    else warn "SQL no responde por WiFi: quito la ruta fija"; sudo networksetup -setadditionalroutes "Wi-Fi"; fi
+fi
+NETIF=$(route -n get api.ipsw.me 2>/dev/null | awk '/interface/{print $2}')
+[ "$NETIF" = "$WIFIDEV" ] && warn "Internet sale por WiFi: el cable no tiene conexión" || ok "Internet por ${NETIF:-?}"
+echo
+
+# ---------------------------------------------------------------- 3. IPSW
 echo "== Copiando IPSW del SSD"
 sudo mkdir -p "$DEST" || { bad "No pude crear ${DEST}"; fin 1; }
 N=0; TOTAL=0; COPIED=0; SKIPPED=0; FAILED=0
