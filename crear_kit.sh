@@ -56,8 +56,7 @@ echo "== Frase clave"
 if [ -n "${AIRLINK_KIT_PASS:-}" ]; then
     P1="$AIRLINK_KIT_PASS"   # automatización/pruebas
 else
-    printf '  Elegí una frase clave larga (16+ caracteres) o Enter para generar una: ' > $TTY
-    stty -echo < $TTY 2>/dev/null; read -r P1 < $TTY; stty echo < $TTY 2>/dev/null; echo > $TTY
+    read -rs -p '  Elegí una frase clave larga (16+ caracteres) o Enter para generar una (no se ve al escribir): ' P1 < $TTY 2> $TTY; echo > $TTY
 fi
 if [ -n "${AIRLINK_KIT_PASS:-}" ]; then
     :
@@ -66,7 +65,7 @@ elif [ -z "$P1" ]; then
     printf '\n  Frase clave generada:  %s\n  ANOTALA AHORA en el gestor de contraseñas (no se vuelve a mostrar).\n\n' "$P1" > $TTY
 else
     [ "${#P1}" -ge 16 ] || { echo "  Muy corta (mínimo 16). Cortando."; exit 1; }
-    printf '  Repetila: ' > $TTY; stty -echo < $TTY 2>/dev/null; read -r P2 < $TTY; stty echo < $TTY 2>/dev/null; echo > $TTY
+    read -rs -p '  Repetila: ' P2 < $TTY 2> $TTY; echo > $TTY
     [ "$P1" = "$P2" ] || { echo "  No coinciden. Cortando."; exit 1; }
 fi
 

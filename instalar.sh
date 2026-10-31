@@ -116,8 +116,8 @@ while :; do
     if [ -n "${AIRLINK_KIT_PASS:-}" ] && [ "$TRY" -eq 1 ]; then
         PASS="$AIRLINK_KIT_PASS"   # automatización/pruebas
     else
-        printf '  Frase clave del kit: ' > /dev/tty
-        stty -echo < /dev/tty 2>/dev/null; read -r PASS < /dev/tty; stty echo < /dev/tty 2>/dev/null; echo > /dev/tty
+        # read -s: no muestra lo que se tipea ni lo que se pega
+        read -rs -p '  Frase clave del kit (no se ve al escribir): ' PASS < /dev/tty 2> /dev/tty; echo > /dev/tty
     fi
     DK=$(AIRLINK_KIT_PASS="$PASS" /usr/bin/python3 -c 'import hashlib,os,sys; print(hashlib.pbkdf2_hmac("sha256", os.environ["AIRLINK_KIT_PASS"].encode(), bytes.fromhex(sys.argv[1]), 600000, 48).hex())' "$SALT" 2>"$W/py.err")
     if [ "${#DK}" -ne 96 ] || [ "${#SALT}" -ne 32 ]; then
@@ -144,8 +144,8 @@ EMPLOYEE_ENDPOINT=$(kv EMPLOYEE_ENDPOINT); SQL_SERVER=$(kv SQL_SERVER); SQL_PORT
 SQL_DATABASE=$(kv SQL_DATABASE); SQL_USER=$(kv SQL_USER); SQL_PASSWORD=$(kv SQL_PASSWORD)
 WIFI_SSID=$(kv WIFI_SSID); WIFI_PASSWORD=$(kv WIFI_PASSWORD)
 UPDATE_CHANNEL="${UPDATE_CHANNEL_OVERRIDE:-$(kv UPDATE_CHANNEL)}"; UPDATE_CHANNEL="${UPDATE_CHANNEL:-rc}"
-case "$EMPLOYEE_ENDPOINT" in http*) ok "Kit descifrado (login, SQL $SQL_DATABASE$( [ -f "$KIT/supervision_key.der" ] && echo ', identidad')$( [ -f "$KIT/airlink_wifi.mobileconfig" ] || [ -n "$WIFI_SSID" ] && echo ', WiFi'))" ;;
-    *) bad "El kit no tiene la URL del login"; exit 1 ;; esac
+case "$EMPLOYEE_ENDPOINT$SQL_SERVER" in ?*) ok "Kit descifrado (login, SQL $SQL_DATABASE$( [ -f "$KIT/supervision_key.der" ] && echo ', identidad')$( [ -f "$KIT/airlink_wifi.mobileconfig" ] || [ -n "$WIFI_SSID" ] && echo ', WiFi'))" ;;
+    *) bad "El kit no tiene ni SQL ni la URL del login"; exit 1 ;; esac
 
 # Última versión publicada (incluye rc si el canal es rc)
 if [ -z "$PKG_VERSION" ]; then
@@ -169,7 +169,7 @@ else
     # shellcheck disable=SC2012
     [ "$(ls /tmp/airlink_wipe_*.lock 2>/dev/null | wc -l | tr -d ' ')" -eq 0 ] || { bad "Hay equipos en proceso: desconectalos y volvé a correr"; exit 1; }
     D=$(mktemp -d /tmp/airlink-pkg.XXXXXX)
-    echo "  Descargando $PKG_VERSION…"
+    echo "  Descargando ${PKG_VERSION}…"
     if curl -fsSL --retry 3 -o "$D/AirlinkStation-arm64.pkg" "$RELEASES/$PKG_VERSION/AirlinkStation-arm64.pkg" \
         && curl -fsSL --retry 3 -o "$D/AirlinkStation-arm64.pkg.sha256" "$RELEASES/$PKG_VERSION/AirlinkStation-arm64.pkg.sha256" \
         && (cd "$D" && shasum -a 256 -c AirlinkStation-arm64.pkg.sha256 >/dev/null); then
@@ -324,15 +324,26 @@ launchctl kickstart -k system/com.airlink.dashboard >/dev/null 2>&1
 
 # ---- 5. Pruebas ----
 hdr "4. Pruebas"
-# Login: el flow tiene que RESPONDER (cualquier código HTTP). Con un empleado
-# inventado puede contestar 200 "incorrecto" o un 4xx: las dos cosas = conecta.
-CODE=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-    -d '{"employeeCode":"DR0000","lastFour":"0000"}' "$EMPLOYEE_ENDPOINT" 2>/dev/null)
-case "$CODE" in
-    2??|4??) ok "El login de operadores responde (Power Automate, HTTP $CODE)" ;;
-    000|"")  bad "Login: sin conexión a Power Automate (red/proxy/DNS)" ;;
-    *)       bad "Login: Power Automate respondió HTTP $CODE (¿flow apagado o URL vencida?)" ;;
-esac
+# Login: airlink_auth.py --probe prueba cada origen (SP en SQL, Power Automate)
+# con un empleado inexistente: "ok" = respondió. Versiones viejas sin --probe:
+# se prueba solo Power Automate.
+PROBE=$(/usr/bin/python3 /usr/local/bin/airlink_auth.py --probe 2>/dev/null)
+if echo "$PROBE" | grep -q ': ok'; then
+    ok "El login de operadores responde ($(echo "$PROBE" | grep ': ok' | cut -d: -f1 | paste -sd, - | sed 's/,/, /g'))"
+    echo "$PROBE" | grep -v ': ok' | sed 's/^/        aviso: /'
+elif [ -n "$PROBE" ]; then
+    bad "Login: ningún origen responde — $(echo "$PROBE" | tr '\n' ' ' | sed -E 's/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/<oculto>/g')"
+elif [ -n "$EMPLOYEE_ENDPOINT" ]; then
+    CODE=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+        -d '{"employeeCode":"DR0000","lastFour":"0000"}' "$EMPLOYEE_ENDPOINT" 2>/dev/null)
+    case "$CODE" in
+        2??|4??) ok "El login de operadores responde (Power Automate, HTTP $CODE)" ;;
+        000|"")  bad "Login: sin conexión a Power Automate (red/proxy/DNS)" ;;
+        *)       bad "Login: Power Automate respondió HTTP $CODE (¿flow apagado o URL vencida?)" ;;
+    esac
+else
+    bad "Login: sin origen configurado"
+fi
 
 # SQL: primero si hay red hasta el servidor (firewall entre redes), después login/SP
 if ! nc -z -G 5 "$SQL_SERVER" "${SQL_PORT:-1433}" >/dev/null 2>&1; then
