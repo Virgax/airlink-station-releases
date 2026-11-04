@@ -36,11 +36,13 @@ UHOME=$(dscl . -read "/Users/$SUSER" NFSHomeDirectory 2>/dev/null | awk '{print 
 [ -n "$SUSER" ] && [ -d "$UHOME" ] || { bad "Iniciá sesión con el usuario de la estación y volvé a correr"; exit 1; }
 
 # ------------------------------------------------------------ qué se conserva
-STATION_ID=$(get_kv "$CONF" STATION_ID)
+# Se pueden forzar:  curl … | sudo STATION_ID=Airlink12 IPSW_DIR=/ruta bash
+FORCE_ID="${STATION_ID:-}"; FORCE_IPSW="${IPSW_DIR:-}"
+STATION_ID="${FORCE_ID:-$(get_kv "$CONF" STATION_ID)}"
 [ "$STATION_ID" = "AIRLINK-M4-01" ] && STATION_ID=""
 [ -n "$STATION_ID" ] || STATION_ID=$(scutil --get LocalHostName 2>/dev/null || hostname -s)
 SHOME=$(get_kv "$CONF" STATION_HOME); SHOME="${SHOME:-$UHOME}"
-IPSW_DIR=$(get_kv "$CONF" IPSW_DIR)
+IPSW_DIR="${FORCE_IPSW:-$(get_kv "$CONF" IPSW_DIR)}"
 case "$IPSW_DIR" in "~"*) IPSW_DIR="${SHOME}${IPSW_DIR#\~}" ;; esac
 [ -n "$IPSW_DIR" ] || { [ -d "$SHOME/AirlinkIPSW" ] && IPSW_DIR="$SHOME/AirlinkIPSW"; }
 DOC_DIR=$(get_kv "$CONF" DOC_DIR); DOC_DIR="${DOC_DIR:-$A/logs}"
