@@ -199,15 +199,36 @@ fi
 hdr "2. Estación"
 [ -f "$CONF" ] || cp "$A/engine/current/config/station.conf.example" "$CONF"
 cp -p "$CONF" "$CONF.prev-$STAMP"
+# Una estación que ya existe conserva su nombre (p. ej. "Airlink12": sale en CSV y
+# SQL) y su carpeta de IPSW. Solo una Mac nueva toma el nombre de la Mac.
+OLD_ID=$(get_kv "$CONF" STATION_ID)
+[ "$OLD_ID" = "AIRLINK-M4-01" ] && OLD_ID=""          # el del ejemplo no cuenta
+[ -n "$STATION_ID" ] || STATION_ID="$OLD_ID"
 [ -n "$STATION_ID" ] || STATION_ID=$(scutil --get LocalHostName 2>/dev/null || hostname -s)
 SUSER=$(stat -f %Su /dev/console 2>/dev/null || true)
 case "$SUSER" in ""|root|loginwindow|_mbsetupuser) SUSER=$(get_kv "$CONF" STATION_USER) ;; esac
 id -u "$SUSER" >/dev/null 2>&1 || { bad "No sé qué usuario usa la estación: iniciá sesión con él y volvé a correr"; exit 1; }
 if [ -z "$IPSW_DIR" ]; then
+    OLD_IPSW=$(get_kv "$CONF" IPSW_DIR)
+    case "$OLD_IPSW" in "~"*) OLD_IPSW="$(dscl . -read "/Users/$SUSER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')${OLD_IPSW#\~}" ;; esac
+    case "$OLD_IPSW" in
+        "") ;;
+        /Volumes/*)   # en un disco externo: se conserva si está conectado
+            if [ -d "/Volumes/$(echo "${OLD_IPSW#/Volumes/}" | cut -d/ -f1)" ]; then IPSW_DIR="$OLD_IPSW"
+            elif [ "$OLD_IPSW" != "/Volumes/AirlinkSSD/IPSW" ]; then
+                IPSW_DIR="$OLD_IPSW"; warn "El disco de IPSW ($OLD_IPSW) no está conectado: conectalo antes de procesar equipos"
+            fi ;;
+        /*) IPSW_DIR="$OLD_IPSW" ;;
+    esac
+fi
+if [ -z "$IPSW_DIR" ]; then
     if mount | grep -q " on /Volumes/AirlinkSSD ("; then IPSW_DIR="/Volumes/AirlinkSSD/IPSW"
     else IPSW_DIR="$A/IPSW"; warn "SSD AirlinkSSD no conectado: IPSW en el disco interno ($IPSW_DIR)"; fi
 fi
-mkdir -p "$IPSW_DIR"
+case "$IPSW_DIR" in
+    /Volumes/*) [ -d "/Volumes/$(echo "${IPSW_DIR#/Volumes/}" | cut -d/ -f1)" ] && mkdir -p "$IPSW_DIR" ;;
+    *) mkdir -p "$IPSW_DIR" ;;
+esac
 set_kv "$CONF" STATION_ID "$STATION_ID"
 set_kv "$CONF" STATION_USER "$SUSER"
 set_kv "$CONF" IPSW_DIR "$IPSW_DIR"

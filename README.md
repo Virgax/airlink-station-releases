@@ -22,6 +22,16 @@ Opciones: `curl … | sudo STATION_ID=AIRLINK-M4-02 UPDATE_CHANNEL=stable bash`
 
 Después, las actualizaciones llegan solas: la app muestra "Nueva versión → Actualizar".
 
+## Estación vieja: limpiar e instalar desde cero
+
+Para una Mac con una instalación anterior (por ejemplo Airlink12). Respalda todo en
+`~/AirlinkBackups/`, borra la instalación vieja y corre `instalar.sh`. Conserva el nombre
+de la estación, la carpeta de IPSW y el CSV/Excel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Virgax/airlink-station-releases/main/limpiar_e_instalar.sh | sudo bash
+```
+
 ## Instalar desde un SSD portátil (con los IPSW)
 
 En una estación que ya funciona, con el SSD portátil conectado (APFS o exFAT, ~100 GB libres):
